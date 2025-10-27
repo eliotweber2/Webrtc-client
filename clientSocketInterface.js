@@ -1,9 +1,9 @@
 const wrtc = require('@roamhq/wrtc');
 //const fetch = require('node-fetch');
 
-const serverUrl = 'http://localhost:3000';
-//const serverUrl = 'http://34.30.63.214:3000';
-const prefix = '/api';
+//const serverUrl = 'http://localhost:8080';
+const serverUrl = 'http://34.31.92.213:8080';
+const prefix = '/webrtc';
 
 const type = 'testing'
 
@@ -159,24 +159,26 @@ class ClientSocketInterface {
 
             this.connectedToSignalingServer = true;
                 
-            const { id, offer } = await response.json();
+            const { id, offerType, offerSdp } = await response.json();
+            const offer = new wrtc.RTCSessionDescription({type: offerType.toLowerCase(), sdp: offerSdp});
             this.connectionId = id;
 
-            await this.peerConnection.setRemoteDescription(new wrtc.RTCSessionDescription(offer));
+            await this.peerConnection.setRemoteDescription(offer);
 
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             const offerResp = await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/offer`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(answer),
+                body: JSON.stringify({offerType: answer.type.toUpperCase(), offerSdp: answer.sdp}),
             });
 
             console.log('Exchanging ICE candidates...');
 
             if (this.iceCandidates.length > 0) {
                 for (const candidate of this.iceCandidates) {
-                    await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidate`, {
+                    console.log(candidate);
+                    await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(candidate),
@@ -185,11 +187,12 @@ class ClientSocketInterface {
             }
             this.iceCandidates = [];
             
-            const iceResp = await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/candidates`);
-            const { iceCandidates } = await iceResp.json();
-            if (iceCandidates && iceCandidates.length > 0) {
-                for (const candidate of iceCandidates) {
-                    await this.peerConnection.addIceCandidate(new wrtc.RTCIceCandidate(candidate));
+            const iceResp = await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`);
+            const { candidates } = await iceResp.json();
+            if (candidates && candidates.length > 0) {
+                for (const candidate of candidates) {
+                    const parsedCandidate = new wrtc.RTCIceCandidate(candidate);
+                    await this.peerConnection.addIceCandidate(parsedCandidate);
                 }
             }
 
