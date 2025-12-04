@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@roamhq/wrtc": "^0.9.1"
+  }
+}

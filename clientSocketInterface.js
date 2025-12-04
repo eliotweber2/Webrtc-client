@@ -2,7 +2,8 @@ const wrtc = require('@roamhq/wrtc');
 //const fetch = require('node-fetch');
 
 //const serverUrl = 'http://localhost:8080';
-const serverUrl = 'http://34.31.92.213:8080';
+//const serverUrl = 'http://34.31.92.213:8080';
+const serverUrl = 'https://haunted-spirit-7v7xg6rpjjr9hr5xq-8080.app.github.dev';
 const prefix = '/webrtc';
 
 const type = 'testing'
@@ -42,10 +43,16 @@ class ClientSocketInterface {
             if (event.candidate) {
                 if (!this.connectedToSignalingServer) this.iceCandidates.push(event.candidate);
                 else {
-                    fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidate`, {
+                    //console.log(event.candidate)
+                    fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(event.candidate),
+                        body: JSON.stringify({
+                            candidate: event.candidate.candidate,
+                            sdpMid: event.candidate.sdpMid,
+                            sdpMLineIndex: event.candidate.sdpMLineIndex
+                        }),
+                        
                     });
                 }
             }
@@ -156,10 +163,9 @@ class ClientSocketInterface {
                     }
                 );
             }
-
+            if (response.status != 200) console.error("Bad response code: " + response.status)
             this.connectedToSignalingServer = true;
-                
-            const { id, offerType, offerSdp } = await response.json();
+            const { offerType, offerSdp, id } = await response.json();
             const offer = new wrtc.RTCSessionDescription({type: offerType.toLowerCase(), sdp: offerSdp});
             this.connectionId = id;
 
@@ -263,4 +269,3 @@ const testClient = new ClientSocketInterface(testHandler);
 
 
 testClient.setupConnection();
-
