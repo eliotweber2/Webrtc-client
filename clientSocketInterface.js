@@ -23,11 +23,13 @@ const testHandler = {
 }
 
 class ClientSocketInterface {
-    constructor(handler, shouldReconnect = false) {
+    constructor(handler, handlerType, shouldReconnect = false) {
         this.setupPeerConnection(servers);
 
         this.connectedToSignalingServer = false;
         this.iceCandidates = [];
+
+        this.handlerType = handlerType;
         
 
         this.shouldReconnect = shouldReconnect;
@@ -60,15 +62,14 @@ class ClientSocketInterface {
     }
 
     onSignalMessage(messageData) {
-        let flags = messageData.split(' | ');
-        const payload = flags[flags.length - 1];
-        flags = flags.slice(0, -1);
+        const messageJson = JSON.parse(messageData);
+        let flags = messageJson.flags.split(' | ');
+        const payload = messageJson.payload;
 
         const passedFlags = flags.slice(1).length > 0? flags.slice(1) : [];
 
-        // console.log(messageData, flags, payload);
-
-        switch (flags[0]) {
+        //console.log(flags[0].split(''))
+        switch (flags[0].trimEnd()) {
             case 'MESSAGE':
                 this.handler.onSignalMessage(passedFlags, payload);
                 break;
@@ -139,7 +140,10 @@ class ClientSocketInterface {
         if (!toConnManager) {
             flags.unshift('MESSAGE');
         }
-        const fullMessage = flags.reduce((msg, flag) => `${msg}${flag} | `, '') + message;
+        const fullMessage = JSON.stringify({
+            flags: flags.join(' | '),
+            payload: message
+        })
         this.signaling.send(fullMessage);
     }
 
@@ -152,7 +156,8 @@ class ClientSocketInterface {
                 response = await fetch(`${serverUrl}${prefix}/new-connection`,
                     {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' }
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({'handlerType': 'test'})
                     }
                 );
             } else {
@@ -256,16 +261,4 @@ class ClientSocketInterface {
 
 }
 
-testHandler.onSetup = () => {
-    console.log('Setup complete, closing connection');
-    setTimeout(() => testClient.peerConnection.close(), 1000);
-    testHandler.onSetup = () => {
-        console.log('Setup complete');
-    };     
-};
-
-const testClient = new ClientSocketInterface(testHandler);
-
-
-
-testClient.setupConnection();
+exports.ClientSocketInterface = ClientSocketInterface;
