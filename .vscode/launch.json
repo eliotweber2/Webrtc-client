@@ -1,0 +1,41 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "TypeScript Debug",
+            "runtimeArgs": [
+                "--enable-source-maps",
+                "--inspect",
+                "-r",
+                "ts-node/register"
+            ],
+            "args": [
+                "${file}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "sourceMaps": true,
+            "internalConsoleOptions": "openOnSessionStart",
+            "env": {
+                "TS_NODE_PROJECT": "${workspaceFolder}/tsconfig.json"
+            },
+            "skipFiles": [
+                "<node_internals>/**"
+            ]
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "TypeScript (tsc)",
+            "preLaunchTask": "tsc: build - tsconfig.json",
+            "program": "${workspaceFolder}/dist/clientSocketInterface.js",
+            "cwd": "${workspaceFolder}",
+            "sourceMaps": true,
+            "internalConsoleOptions": "openOnSessionStart"
+        }
+    ]
+}

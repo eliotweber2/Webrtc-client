@@ -1,29 +1,43 @@
-const wrtc = require('@roamhq/wrtc');
+"use strict";
 
+import { RTCPeerConnection, RTCIceCandidate, RTCDataChannel, RTCPeerConnectionIceEvent, RTCSessionDescription } from "@roamhq/wrtc";
 //const serverUrl = 'http://localhost:8080';
 const serverUrl = 'https://eliotweber.net';
 //const serverUrl = 'https://haunted-spirit-7v7xg6rpjjr9hr5xq-8080.app.github.dev';
 const prefix = '/webrtc';
 
-const DATA_CHANNEL_RETRIES = 3;
-
-const servers = {
+const servers: IceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
   ]
 };
 
-const testHandler = {
+const testHandler: WebrtcClientHandler = {
         onSetup: () => console.log('Setup complete'),
-        onOpen: () => console.log('Connection opened'),
         onClose: () => console.log('Connection closed'),
-        onSignalMessage: (flags, payload) => console.log('Signal message received:', flags, payload),
-        onReconnect: (flags, payload) => console.log('Reconnected:', flags, payload),
+        onSignalMessage: (flags: string[], data) => console.log('Signal message received:', flags, data),
+        onReconnect: () => console.log("Reconnected")
 }
 
 class ClientSocketInterface {
-    constructor(handler, handlerType, shouldReconnect = false) {
-        this.setupPeerConnection(servers);
+
+    private connectedToSignalingServer: boolean;
+    private readonly iceCandidates: RTCIceCandidate[];
+    private shouldReconnect: boolean;
+    private readonly handlerType: string;
+    private isClosing: boolean;
+    private connectionId: number;
+    
+    readonly handler: WebrtcClientHandler;
+
+    private readonly waitFor: Map<string, signalFunction>;
+    private readonly timeouts: Map<string, number>;
+
+    private peerConnection: RTCPeerConnection;
+    private signaling: RTCDataChannel;
+    private data: RTCDataChannel;
+    
+    constructor(handler: WebrtcClientHandler, handlerType: string, shouldReconnect: boolean = false) {
 
         this.connectedToSignalingServer = false;
         this.iceCandidates = [];
@@ -34,54 +48,53 @@ class ClientSocketInterface {
         this.isClosing = false;
 
         this.handler = handler;
-        this.handler.connection = this;
 
-        this.waitFor = {};
-        this.timeouts = {};
+        this.waitFor = new Map();
+        this.timeouts = new Map();
+
+        this.peerConnection = new RTCPeerConnection(servers);
     }
 
-    setupPeerConnection(servers) {
-        this.peerConnection = new wrtc.RTCPeerConnection(servers);
-        this.peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-                if (!this.connectedToSignalingServer) this.iceCandidates.push(event.candidate);
-                else {
-                    //console.log(event.candidate)
-                    fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            candidate: event.candidate.candidate,
-                            sdpMid: event.candidate.sdpMid,
-                            sdpMLineIndex: event.candidate.sdpMLineIndex
-                        }),
-                        
-                    });
-                }
-            }
+    setupIceCandidates() {
+        this.peerConnection.onicecandidate = (event: RTCPeerConnectionIceEvent) => {
+            if (!event.candidate) return;
+            if (!this.connectedToSignalingServer) {this.iceCandidates.push(event.candidate); return; }
+            //console.log(event.candidate)
+            fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    candidate: event.candidate.candidate,
+                    sdpMid: event.candidate.sdpMid,
+                    sdpMLineIndex: event.candidate.sdpMLineIndex
+                }),
+                
+            });
         };
     }
 
-    onSignalMessage(messageData) {
+    onSignalMessage(messageData: string) {
         const messageJson = JSON.parse(messageData);
         let flags = messageJson.flags.split(' | ');
-        const payload = messageJson.payload;
+        const data = messageJson.data;
 
-        flags = flags.map(flag => flag.trimEnd());
+        flags = flags.map((flag: string) => flag.trimEnd());
 
         const passedFlags = flags.slice(1).length > 0? flags.slice(1) : [];
 
-        if (this.waitFor.hasOwnProperty(flags[0])) this.waitFor[flags[0]](flags, payload);
+        if (this.waitFor.hasOwnProperty(flags[0])) {
+            //Will always be a function
+            this.waitFor.get(flags[0])!(flags, data);
+        }
 
-        //console.log(flags[0].split(''))
         switch (flags[0]) {
             case 'MESSAGE':
-                this.handler.onSignalMessage(passedFlags, payload);
+                this.handler.onSignalMessage(passedFlags, data);
                 break;
 
             case 'RECONNECT':
-                if (this.handler.onReconnect) this.handler.onReconnect(passedFlags, payload);
-                this.handler.onSetup(passedFlags, payload);
+                this.handler.onReconnect?.();
+                this.handler.onSetup();
                 break;
 
             case 'SHOULD_RECONNECT':
@@ -94,16 +107,13 @@ class ClientSocketInterface {
 
             case 'OPEN':
                 // console.log('Received OPEN signal');
-                if (this.handler.onOpen) this.handler.onOpen(passedFlags, payload);
 
-                this.confirmOpen();
-                if (this.openBackup) {
-                    clearTimeout(this.openBackup);
+                if (this.timeouts.get("openBackup")) {
+                    clearTimeout(this.timeouts.get("openBackup"));
                 }
                 break;
             
             case "SERVER_LIST":
-                this.serverData = JSON.parse(messageData);
                 break;
 
             case "HEARTBEAT":
@@ -111,11 +121,8 @@ class ClientSocketInterface {
                 break;
 
             case 'CLOSE':
-                if (this.handler.onClose) this.handler.onClose(passedFlags, payload);
+                this.handler.onClose?.();
                 this.closeConnection();
-                if (this.closeBackup) {
-                    clearTimeout(this.closeBackup);
-                }
                 this.isClosing = true;
                 break;
 
@@ -126,12 +133,13 @@ class ClientSocketInterface {
 
     onClose() {
         console.log('Peer connection closed');
-        if (this.handler.onClose) this.handler.onClose();
+        this.handler.onClose?.();
         if (!this.isClosing) {
             console.error('Connection closed unexpectedly');
             if (this.shouldReconnect) {
                 console.log('Attempting to reconnect...');
-                this.setupPeerConnection(servers);
+                this.peerConnection = new RTCPeerConnection(servers);
+                this.setupIceCandidates();
                 this.start();
             }
         } else {
@@ -141,36 +149,35 @@ class ClientSocketInterface {
 
     closeConnection() {
         this.isClosing = true;
-        console.log(`Closing connection ${this.id}`);
+        console.log(`Closing connection ${this.connectionId}`);
         this.sendSignaling('', ['CLOSE'], true);
-        this.closeBackup = setTimeout(() => {
-            console.error('Peer did not confirm close. Closing anyway.');
-            this.peerConnection.close();
-        }, 1000);
+        this.waitForMessage("CLOSE", true, 2000, "Client did not confirm close. Closing anyway.");
     }
 
-    sendSignaling(message, flags, toConnManager=false) {
+    sendSignaling(message:string, flags:string[], toConnManager=false) {
         if (!toConnManager) {
-            if (flags == undefined) {
+            if (flags === undefined) {
                 console.log(message,flags);
             }
             flags.unshift('MESSAGE');
         }
         const fullMessage = JSON.stringify({
             flags: flags.join(' | '),
-            payload: message
+            data: message
         })
-        this.signaling.send(fullMessage);
+        if (this.signaling) this.signaling.send(fullMessage);
+        else console.log(`Signaling channel not open to send message: ${fullMessage}`);
     }
 
-    async connectToServer(serverSelector) {
+    async connectToServer(serverSelector: serverSelectorFunction) {
         let resultOk = true;
         let resultErrorText = '';
         await new Promise((resolve,reject) => {
             const waitPromise = this.waitForMessage("SERVER_LIST", true, 8000, "");
 
-            waitPromise.then(({flags,data}) => {
-                const servers = JSON.parse(data);
+            waitPromise.then((value) => {
+                const data = (value as SignalingInfo).data;
+                const servers: ServerInfo[] = JSON.parse(data);
                 const validServers = servers.filter(serverSelector);
 
                 if (validServers.length < 1) reject("Invalid selector, passed no servers.");
@@ -181,8 +188,8 @@ class ClientSocketInterface {
 
             this.sendSignaling('', ['GET_SERVERS'], true);
 
-        }).then((server) => {
-            this.joinServer(server.server_id);
+        }).then((value) => {
+            this.joinServer((value as ServerInfo).server_id);
         }).catch((reason) => {
             resultErrorText = reason;
             resultOk = false;
@@ -192,29 +199,29 @@ class ClientSocketInterface {
         });
     }
 
-    async waitForMessage(flag, isTimeout=false, timeoutLength=null, errMsg=null) {
+    async waitForMessage(flag: string, isTimeout=false, timeoutLength=-1, errMsg="") {
         return new Promise((resolve, reject) => {
-            this.waitFor[flag] = (flags, data) => {
+            this.waitFor.set(flag, (flags, data) => {
                 resolve({flags,data});
-            }
-            if (isTimeout) this.timeouts[flag] = setTimeout(() => {
-                if (errMsg != null) console.log(errMsg);
+            });
+            if (isTimeout) this.timeouts.set(flag, setTimeout(() => {
+                if (errMsg !== null) console.log(errMsg);
                 reject();
-            }, timeoutLength);
+            }, timeoutLength) as unknown as number);
         }).finally(() => {
-            delete this.waitFor[flag];
-            if (this.timeouts.hasOwnProperty(flag)) delete this.timeouts[flag];
+            this.waitFor.delete(flag);
+            if (this.timeouts.has(flag)) clearTimeout(this.timeouts.get(flag)!);
         });
     }
 
-    createServer(type) {
+    createServer(type: string) {
         this.sendSignaling(JSON.stringify({
             method: "CREATE",
             type: type
         }),["SERVER_CONNECT"], true);
     }
 
-    joinServer(id) {
+    joinServer(id: string) {
         this.sendSignaling(JSON.stringify({
             method: "JOIN",
             serverId: id
@@ -228,7 +235,7 @@ class ClientSocketInterface {
     }
 
     async start() {
-        return new Promise(async (resolve,reject) => {
+        return new Promise<void>(async (resolve,reject) => {
 
             try {
                 console.log('Pinging signaling server...');
@@ -251,13 +258,13 @@ class ClientSocketInterface {
                     );
                 }
 
-                if (response.status != 200) {
+                if (response.status !== 200) {
                     console.error("Bad response code: " + response.status);
                     return;
                 }
                 this.connectedToSignalingServer = true;
                 const { offerType, offerSdp, id } = await response.json();
-                const offer = new wrtc.RTCSessionDescription({type: offerType.toLowerCase(), sdp: offerSdp});
+                const offer = new RTCSessionDescription({type: offerType.toLowerCase(), sdp: offerSdp});
                 this.connectionId = id;
 
                 await this.peerConnection.setRemoteDescription(offer);
@@ -281,36 +288,40 @@ class ClientSocketInterface {
                         });
                     }
                 }
-                this.iceCandidates = [];
+                this.iceCandidates.length = 0;
 
                 const iceResp = await fetch(`${serverUrl}${prefix}/connections/${this.connectionId}/ice-candidates`);
                 const { candidates } = await iceResp.json();
                 //console.log(candidates.length);
                 if (candidates && candidates.length > 0) {
                     for (const candidate of candidates) {
-                        const parsedCandidate = new wrtc.RTCIceCandidate(candidate);
+                        const parsedCandidate = new RTCIceCandidate(candidate);
                         await this.peerConnection.addIceCandidate(parsedCandidate);
                     }
                 }
 
                 console.log("Setting up data channels...")
 
-                await new Promise((resolve, reject) => {
+                await new Promise<void> ((resolve, reject) => {
                     let received = 0;
-                    this.channelBackup = setTimeout(() => {
+                    this.timeouts.set('dataChannelSetup', setTimeout(() => {
                         reject(new Error('Data channel setup timeout'));
-                    }, 10000);
+                    }, 10000) as unknown as number);
                     this.peerConnection.ondatachannel = (event) => {
                         console.log('Data channel received:', event.channel.label);
-                        this[event.channel.label] = event.channel;
+                        if (event.channel.label === 'signaling') {
+                            this.signaling = event.channel;
+                        } else if (event.channel.label === 'data') {
+                            this.data = event.channel;
+                        }
 
                         received++;
                         if (received === 2) resolve();
                     };
-                })
+                });
 
-                if (this.channelBackup) {
-                    clearTimeout(this.channelBackup);
+                if (this.timeouts.has('dataChannelSetup')) {
+                    clearTimeout(this.timeouts.get('dataChannelSetup')!);
                 }
 
                 this.signaling.onmessage = (event) => {
@@ -323,16 +334,17 @@ class ClientSocketInterface {
                 }
 
                 this.data.onmessage = (event) => {
-                    this.handler.onDataMessage(event.data);
+                    this.handler.onDataMessage?.(event.data);
                 }
 
                 console.log('Testing data channel communication...');
 
-                await new Promise((resolve, reject) => {
-                    this.confirmOpen = resolve;
-                    this.openBackup = setTimeout(() => {
-                        reject(new Error('Data channel open confirmation timeout'));
-                    }, 5000);
+                await new Promise<void>((resolve, reject) => {
+                    this.waitForMessage("OPEN", true, 5000, "Data channel OPEN message not received in time.").then(() => {
+                        resolve();
+                    }).catch(() => {
+                        reject(new Error('Data channel OPEN message timeout'));
+                    });
                     
                     this.sendSignaling('', ['OPEN'], true);
                 });
@@ -354,5 +366,4 @@ class ClientSocketInterface {
 const client = new ClientSocketInterface(testHandler, "passthrough");
 client.start();
 
-exports.ClientSocketInterface = ClientSocketInterface;
-exports.testHandler = testHandler;
+export { ClientSocketInterface };
