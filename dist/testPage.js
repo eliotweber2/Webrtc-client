@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const clientSocketInterface_1 = require("./clientSocketInterface");
 const prompt = require("prompt-sync")();
+const mode = "X";
 class TicTacToeClient {
     constructor(type) {
         this.handler = JSON.parse(JSON.stringify(clientSocketInterface_1.testHandler));
@@ -40,6 +41,22 @@ class TicTacToeClient {
         return this.connection.start();
     }
 }
+async function startClient(mode) {
+    const client = new TicTacToeClient(mode);
+    await client.start().then(() => {
+        if (mode === "X") {
+            client.connection.createServer("tic-tac-toe");
+        }
+        else {
+            client.connection.connectToServer(() => true);
+        }
+    });
+}
+async function setupClients() {
+    await startClient("X");
+    await startClient("O");
+}
+/*
 const client1 = new TicTacToeClient("X");
 const setupPromise1 = client1.start();
 setupPromise1.then(() => {
@@ -47,9 +64,11 @@ setupPromise1.then(() => {
     const client2 = new TicTacToeClient("O");
     const setupPromise2 = client2.start();
     setupPromise2.then(() => {
-        client2.connection.connectToServer(() => true);
+    client2.connection.connectToServer(() => true);
     });
 });
+*/
+setupClients();
 //testHandler.onSetup = () => console.log(`Test client setup.`);
 //const client = new ClientSocketInterface(testHandler, "passthrough", true);
 //client.setupConnection();

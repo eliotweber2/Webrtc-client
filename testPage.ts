@@ -1,6 +1,8 @@
 import { ClientSocketInterface, testHandler } from "./clientSocketInterface";
 const prompt = require("prompt-sync")();
 
+const mode = "X";
+
 class TicTacToeClient {
 
     private handler: WebrtcClientHandler;
@@ -54,21 +56,22 @@ class TicTacToeClient {
     }
 }
 
-
-const client1 = new TicTacToeClient("X");
-const setupPromise1 = client1.start();
-setupPromise1.then(() => {
-    client1.connection.createServer("tic-tac-toe");
-    const client2 = new TicTacToeClient("O");
-    const setupPromise2 = client2.start();
-    setupPromise2.then(() => {
-    client2.connection.connectToServer(() => true);
+async function startClient(mode: string) {
+    const client = new TicTacToeClient(mode);
+    await client.start().then(() => {
+        if (mode === "X") {
+            client.connection.createServer("tic-tac-toe");
+        } else {
+            client.connection.connectToServer(() => true);
+        }
     });
-});
+}
 
+async function setupClients() {
+    await startClient("X");
+    await startClient("O");
+}
 
+//setupClients();
 
-
-//testHandler.onSetup = () => console.log(`Test client setup.`);
-//const client = new ClientSocketInterface(testHandler, "passthrough", true);
-//client.setupConnection();
+startClient(mode);

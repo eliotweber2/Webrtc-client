@@ -4,8 +4,8 @@ exports.testHandler = exports.ClientSocketInterface = void 0;
 const wrtc_1 = require("@roamhq/wrtc");
 const ts_logger_1 = require("@origranot/ts-logger");
 //const serverUrl = "http://localhost:8080";
-//const serverUrl = "https://eliotweber.net";
-const serverUrl = "https://didactic-bassoon-v6p5x9gqj59pfp6rr-8080.app.github.dev";
+const serverUrl = "https://eliotweber.net";
+//const serverUrl = "https://didactic-bassoon-v6p5x9gqj59pfp6rr-8080.app.github.dev";
 const prefix = "/webrtc";
 const servers = {
     iceServers: [
@@ -18,7 +18,7 @@ const loggerOptions = {
     timestamps: true,
     transports: [
         new ts_logger_1.ConsoleTransport({ threshold: DEFAULT_LOG_LEVEL }),
-        new ts_logger_1.FileTransport({ path: "logs/client-log.txt" })
+        new ts_logger_1.FileTransport({ path: "logs/client-log.log" })
     ]
 };
 const testHandler = {
@@ -160,8 +160,10 @@ class ClientSocketInterface {
             resultErrorText = reason;
             resultOk = false;
         }).finally(() => {
-            if (!resultOk)
+            if (!resultOk) {
+                this.logger.info("Failed to connect to server:");
                 this.logger.error(resultErrorText);
+            }
             return resultOk;
         });
     }

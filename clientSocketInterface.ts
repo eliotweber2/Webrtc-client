@@ -4,8 +4,8 @@ import { RTCPeerConnection, RTCIceCandidate, RTCDataChannel, RTCPeerConnectionIc
 import { Logger, ConsoleTransport, FileTransport, LOG_LEVEL } from "@origranot/ts-logger";
 
 //const serverUrl = "http://localhost:8080";
-//const serverUrl = "https://eliotweber.net";
-const serverUrl = "https://didactic-bassoon-v6p5x9gqj59pfp6rr-8080.app.github.dev";
+const serverUrl = "https://eliotweber.net";
+//const serverUrl = "https://didactic-bassoon-v6p5x9gqj59pfp6rr-8080.app.github.dev";
 const prefix = "/webrtc";
 
 const servers: IceServers = {
@@ -21,7 +21,7 @@ const loggerOptions = {
     timestamps: true,
     transports: [
         new ConsoleTransport({ threshold: DEFAULT_LOG_LEVEL }),
-        new FileTransport({ path: "logs/client-log.txt" })
+        new FileTransport({ path: "logs/client-log.log" })
     ]
 };
 
@@ -212,7 +212,10 @@ class ClientSocketInterface {
             resultErrorText = reason;
             resultOk = false;
         }).finally(() => {
-            if (!resultOk) this.logger.error(resultErrorText);
+            if (!resultOk) {
+                this.logger.info("Failed to connect to server:");
+                this.logger.error(resultErrorText);
+            }
             return resultOk;
         });
     }
