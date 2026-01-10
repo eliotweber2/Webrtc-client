@@ -7,7 +7,7 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "TypeScript Debug",
+            "name": "ts-node",
             "runtimeArgs": [
                 "--enable-source-maps",
                 "--inspect",
@@ -30,9 +30,9 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "TypeScript (tsc)",
+            "name": "tsc",
             "preLaunchTask": "tsc: build - tsconfig.json",
-            "program": "${workspaceFolder}/dist/clientSocketInterface.js",
+            "program": "${file}",
             "cwd": "${workspaceFolder}",
             "sourceMaps": true,
             "internalConsoleOptions": "openOnSessionStart"

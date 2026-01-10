@@ -17,8 +17,7 @@
     "sourceMap": true
   },
   "include": [
-    "clientSocketInterface.ts",
-    "types.ts"
+    "**/*.ts"
   ],
   "files": [
     "types.ts"

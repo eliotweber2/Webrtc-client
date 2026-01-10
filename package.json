@@ -1,11 +1,11 @@
 {
   "dependencies": {
+    "@origranot/ts-logger": "^1.12.0",
     "@roamhq/wrtc": "^0.9.1",
     "prompt-sync": "^4.2.0"
   },
   "devDependencies": {
     "ts-node": "^10.9.2",
-    "tsc": "^2.0.4",
     "typescript": "^5.9.3"
   }
 }

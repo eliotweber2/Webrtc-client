@@ -1,16 +1,16 @@
 "use strict";
 
-type handlerFunction = () => void;
-type dataFunction = (payload: Object) => void;
-type signalFunction = (flags: string[], payload: Object) => void;
-type serverSelectorFunction = (server: ServerInfo) => boolean;
+type HandlerFunction = () => void;
+type DataFunction = (payload: Object) => void;
+type SignalFunction = (flags: string[], payload: Object) => void;
+type ServerSelectorFunction = (server: ServerInfo) => boolean;
 
 interface WebrtcClientHandler {
-    onSetup: handlerFunction,
-    onClose?: handlerFunction,
-    onDataMessage?: dataFunction,
-    onSignalMessage: signalFunction,
-    onReconnect: handlerFunction
+    onSetup: HandlerFunction,
+    onClose?: HandlerFunction,
+    onDataMessage?: DataFunction,
+    onSignalMessage: SignalFunction,
+    onReconnect: HandlerFunction
 }
 
 interface ServerInfo {
@@ -21,7 +21,7 @@ interface ServerInfo {
 
 interface SignalingInfo {
     "types": string[],
-    "data": string
+    "payload": string
 }
 
 interface IceServers {
